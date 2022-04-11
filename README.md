@@ -13,6 +13,7 @@ Easiest way to compile the code is to copy it as src/bin/pg_replslotdata in Post
 Usage
 =====
 ./pg_replslotdata -D data_dir
+
 Run ./pg_replslotdata --help for all options and their usage.
 
 Dependencies
