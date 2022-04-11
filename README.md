@@ -8,7 +8,7 @@ Version 14 and above.
 
 Installation
 ============
-Easiest way to compile the code is to copy it as src/bin/pg_replslotdata in PostgreSQL source code and use "make install".
+Easiest way to use the tool's source code is to copy it as src/bin/pg_replslotdata in PostgreSQL source code and run "make install" to compile.
 
 Usage
 =====
