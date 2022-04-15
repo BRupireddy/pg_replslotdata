@@ -178,6 +178,10 @@ read_and_display_repl_slot(const char *name)
 	if (fd > 0)
 	{
 		pg_log_warning("found temporary state file \"%s\": %m", path);
+
+		if (close(fd) != 0)
+			pg_fatal("could not close file \"%s\": %m", path);
+
 		return;
 	}
 
