@@ -42,8 +42,8 @@ typedef struct replslotdata_opts
 static replslotdata_opts opts;
 
 static void usage(const char *progname);
-static DIR *get_destination_dir(char *dest_folder);
-static void close_destination_dir(DIR *dest_dir, char *dest_folder);
+static DIR *get_destination_dir(char *dest);
+static void close_destination_dir(DIR *dest_dir, char *dest);
 static void process_replslots(void);
 static void read_and_display_repl_slot(const char *name);
 
@@ -67,14 +67,14 @@ usage(const char *progname)
  * Get destination directory.
  */
 static DIR *
-get_destination_dir(char *dest_folder)
+get_destination_dir(char *dest)
 {
 	DIR		   *dir;
 
-	Assert(dest_folder != NULL);
-	dir = opendir(dest_folder);
+	Assert(dest != NULL);
+	dir = opendir(dest);
 	if (dir == NULL)
-		pg_fatal("could not open directory \"%s\": %m", dest_folder);
+		pg_fatal("could not open directory \"%s\": %m", dest);
 
 	return dir;
 }
@@ -83,11 +83,11 @@ get_destination_dir(char *dest_folder)
  * Close existing directory.
  */
 static void
-close_destination_dir(DIR *dest_dir, char *dest_folder)
+close_destination_dir(DIR *dest_dir, char *dest)
 {
-	Assert(dest_dir != NULL && dest_folder != NULL);
+	Assert(dest_dir != NULL && dest != NULL);
 	if (closedir(dest_dir))
-		pg_fatal("could not close directory \"%s\": %m", dest_folder);
+		pg_fatal("could not close directory \"%s\": %m", dest);
 }
 
 /*
@@ -358,7 +358,7 @@ main(int argc, char *argv[])
 	if (opts.verbose)
 		pg_log_info("data directory is \"%s\"", opts.datadir);
 
-	/* check existence of destination folder */
+	/* check existence of data directory */
 	dir = get_destination_dir(opts.datadir);
 	close_destination_dir(dir, opts.datadir);
 
