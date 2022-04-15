@@ -9,19 +9,11 @@
  *		  src/bin/pg_replslotdata/pg_replslotdata.c
  *-------------------------------------------------------------------------
  */
-/*
- * We have to use postgres.h not postgres_fe.h here, because there's so much
- * backend-only stuff in the XLOG include files we need.  But we need a
- * frontend-ish environment otherwise.  Hence this ugly hack.
- */
-#define FRONTEND 1
-
-#include "postgres.h"
+#include "postgres_fe.h"
 
 #include <dirent.h>
 #include <sys/stat.h>
 
-#include "access/xlog.h"
 #include "access/xlog_internal.h"
 #include "common/logging.h"
 #include "common/string.h"
@@ -59,10 +51,9 @@ static void
 usage(const char *progname)
 {
 	printf(_("%s Displays information about the replication slots from $PGDATA/pg_replslot/<slot_name>.\n\n"), progname);
-	printf(_("Usage:\n"));
-	printf(_("  %s [OPTION] [DATADIR]\n"), progname);
+	printf(_("Usage:\n  %s [OPTION]...\n\n"), progname);
 	printf(_("\nOptions:\n"));
-	printf(_(" [-D, --pgdata=]DATADIR  data directory\n"));
+	printf(_("  -D, --pgdata=DATADIR   data directory\n"));
 	printf(_("  -V, --version          output version information, then exit\n"));
 	printf(_("  -v, --verbose          write a lot of output\n"));
 	printf(_("  -?, --help             show this help, then exit\n"));
@@ -83,10 +74,7 @@ get_destination_dir(char *dest_folder)
 	Assert(dest_folder != NULL);
 	dir = opendir(dest_folder);
 	if (dir == NULL)
-	{
-		pg_log_error("could not open directory \"%s\": %m", dest_folder);
-		exit(1);
-	}
+		pg_fatal("could not open directory \"%s\": %m", dest_folder);
 
 	return dir;
 }
@@ -99,10 +87,7 @@ close_destination_dir(DIR *dest_dir, char *dest_folder)
 {
 	Assert(dest_dir != NULL && dest_folder != NULL);
 	if (closedir(dest_dir))
-	{
-		pg_log_error("could not close directory \"%s\": %m", dest_folder);
-		exit(1);
-	}
+		pg_fatal("could not close directory \"%s\": %m", dest_folder);
 }
 
 /*
@@ -154,15 +139,12 @@ process_replslots(void)
 	}
 
 	if (errno)
-	{
-		pg_log_error("could not read directory \"%s\": %m", PG_REPLSLOT_DIR);
-		exit(1);
-	}
+		pg_fatal("could not read directory \"%s\": %m", PG_REPLSLOT_DIR);
 
 	if (cnt == 0)
 	{
 		pg_log_info("no replication slots were found");
-		exit(0);
+		exit(EXIT_SUCCESS);
 	}
 
 	close_destination_dir(rsdir, PG_REPLSLOT_DIR);
@@ -187,7 +169,7 @@ read_and_display_repl_slot(const char *name)
 	int		readBytes;
 	pg_crc32c	checksum;
 
-	/* delete temp file if it exists */
+	/* if temp file exists, just inform and continue further */
 	sprintf(slotdir, PG_REPLSLOT_DIR"/%s", name);
 	sprintf(path, "%s/state.tmp", slotdir);
 
@@ -195,8 +177,8 @@ read_and_display_repl_slot(const char *name)
 
 	if (fd > 0)
 	{
-		pg_log_error("found temporary state file \"%s\": %m", path);
-		exit(1);
+		pg_log_warning("found temporary state file \"%s\": %m", path);
+		return;
 	}
 
 	sprintf(path, "%s/state", slotdir);
@@ -211,10 +193,7 @@ read_and_display_repl_slot(const char *name)
 	 * place only after we fsync()ed the state file.
 	 */
 	if (fd < 0)
-	{
-		pg_log_error("could not open file \"%s\": %m", path);
-		exit(1);
-	}
+		pg_fatal("could not open file \"%s\": %m", path);
 
 	if (opts.verbose)
 		pg_log_info("reading version independent replication slot state file");
@@ -225,42 +204,27 @@ read_and_display_repl_slot(const char *name)
 	if (readBytes != ReplicationSlotOnDiskConstantSize)
 	{
 		if (readBytes < 0)
-		{
-			pg_log_error("could not read file \"%s\": %m", path);
-			exit(1);
-		}
+			pg_fatal("could not read file \"%s\": %m", path);
 		else
-		{
-			pg_log_error("could not read file \"%s\": read %d of %zu",
-						 path, readBytes,
-						 (Size) ReplicationSlotOnDiskConstantSize);
-			exit(1);
-		}
+			pg_fatal("could not read file \"%s\": read %d of %zu",
+					 path, readBytes,
+					 (Size) ReplicationSlotOnDiskConstantSize);
 	}
 
 	/* verify magic */
 	if (cp.magic != SLOT_MAGIC)
-	{
-		pg_log_error("replication slot file \"%s\" has wrong magic number: %u instead of %u",
-					 path, cp.magic, SLOT_MAGIC);
-		exit(1);
-	}
+		pg_fatal("replication slot file \"%s\" has wrong magic number: %u instead of %u",
+				 path, cp.magic, SLOT_MAGIC);
 
 	/* verify version */
 	if (cp.version != SLOT_VERSION)
-	{
-		pg_log_error("replication slot file \"%s\" has unsupported version %u",
-					 path, cp.version);
-		exit(1);
-	}
+		pg_fatal("replication slot file \"%s\" has unsupported version %u",
+				 path, cp.version);
 
 	/* boundary check on length */
 	if (cp.length != ReplicationSlotOnDiskV2Size)
-	{
-		pg_log_error("replication slot file \"%s\" has corrupted length %u",
-					 path, cp.length);
-		exit(1);
-	}
+		pg_fatal("replication slot file \"%s\" has corrupted length %u",
+				 path, cp.length);
 
 	if (opts.verbose)
 		pg_log_info("reading the entire replication slot state file");
@@ -273,23 +237,14 @@ read_and_display_repl_slot(const char *name)
 	if (readBytes != cp.length)
 	{
 		if (readBytes < 0)
-		{
-			pg_log_error("could not read file \"%s\": %m", path);
-			exit(1);
-		}
+			pg_fatal("could not read file \"%s\": %m", path);
 		else
-		{
-			pg_log_error("could not read file \"%s\": read %d of %zu",
-						 path, readBytes, (Size) cp.length);
-			exit(1);
-		}
+			pg_fatal("could not read file \"%s\": read %d of %zu",
+					 path, readBytes, (Size) cp.length);
 	}
 
 	if (close(fd) != 0)
-	{
-		pg_log_error("could not close file \"%s\": %m", path);
-		exit(1);
-	}
+		pg_fatal("could not close file \"%s\": %m", path);
 
 	/* now verify the CRC */
 	INIT_CRC32C(checksum);
@@ -299,11 +254,8 @@ read_and_display_repl_slot(const char *name)
 	FIN_CRC32C(checksum);
 
 	if (!EQ_CRC32C(checksum, cp.checksum))
-	{
-		pg_log_error("checksum mismatch for replication slot file \"%s\": is %u, should be %u",
-					 path, checksum, cp.checksum);
-		exit(1);
-	}
+		pg_fatal("checksum mismatch for replication slot file \"%s\": is %u, should be %u",
+				 path, checksum, cp.checksum);
 
 	sprintf(restart_lsn, "%X/%X", LSN_FORMAT_ARGS(cp.slotdata.restart_lsn));
 	sprintf(invalidated_at, "%X/%X", LSN_FORMAT_ARGS(cp.slotdata.invalidated_at));
@@ -357,12 +309,12 @@ main(int argc, char *argv[])
 		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
 		{
 			usage(progname);
-			exit(0);
+			exit(EXIT_SUCCESS);
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
 			puts("pg_replslotdata (PostgreSQL) " PG_VERSION);
-			exit(0);
+			exit(EXIT_SUCCESS);
 		}
 	}
 
@@ -411,11 +363,7 @@ main(int argc, char *argv[])
 	close_destination_dir(dir, opts.datadir);
 
 	if (chdir(opts.datadir) < 0)
-	{
-		pg_log_error("could not change directory to \"%s\": %m",
-					 opts.datadir);
-		exit(1);
-	}
+		pg_fatal("could not change directory to \"%s\": %m", opts.datadir);
 
 	/* everything looks okay so far, let's process the replication slots */
 	process_replslots();
@@ -423,6 +371,6 @@ main(int argc, char *argv[])
 	return EXIT_SUCCESS;
 
 bad_argument:
-	fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+	pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 	return EXIT_FAILURE;
 }
